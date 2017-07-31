@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    tools:context="ru.itsps.smrecord.smrecord.MainActivity">
+
+    <item android:title="@string/settings_title"
+        android:visible="true"
+        android:enabled="true"
+        android:id="@+id/config"
+        tools:showAsAction="ifRoom" />
+</menu>
