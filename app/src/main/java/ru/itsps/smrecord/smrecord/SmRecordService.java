@@ -35,8 +35,8 @@ package ru.itsps.smrecord.smrecord;
     import retrofit2.Call;
     import retrofit2.Response;
     import retrofit2.Retrofit;
-    import android.media.CamcorderProfile;
-    import android.hardware.Camera;
+//    import android.media.CamcorderProfile;
+//    import android.hardware.Camera;
 
 
 public class SmRecordService extends Service {
@@ -47,20 +47,20 @@ public class SmRecordService extends Service {
     private SmRecordPhoneStateListener listenPhone;
     private SmRecordBinder binder = new SmRecordBinder();
     private RecordStoreContract contract;
-    private Camera camera;
+//    private Camera camera;
     private SQLiteDatabase db;
     private Timer timer;
     private TimerTask tTask;
     private Timer timer2;
     private TimerTask tTask2;
     private Timer timer3;
-    private TimerTask tTask3;
+//    private TimerTask tTask3;
     private MediaRecorder recorder;
     private MediaRecorder recorder2;
-    private MediaRecorder recorder3;
+//    private MediaRecorder recorder3;
     private long interval = 60000;
     private long interval2 = 60000;
-    private long interval3 = 60000;
+//    private long interval3 = 60000;
     private boolean IsRecordingMIC = false;
     private boolean IsRecordingVideo = false;
     private String serviceStatus;
@@ -83,10 +83,10 @@ public class SmRecordService extends Service {
     private Date call_stop2;
     private int call_duration2;
     private String call_record_file2;
-    private Date call_start3;
-    private Date call_stop3;
-    private int call_duration3;
-    private String call_record_file3;
+//    private Date call_start3;
+//    private Date call_stop3;
+//    private int call_duration3;
+//    private String call_record_file3;
     private static final String TAG = "SmRecordService";
     private String errorMessage;
     private static String audioSource;
@@ -174,7 +174,7 @@ public class SmRecordService extends Service {
         timer = new Timer(true);
         //таймер записи по расписанию
         timer2 = new Timer(true);
-        timer3 = new Timer(true);
+//        timer3 = new Timer(true);
 
         //Видео
         contract = new RecordStoreContract();
@@ -211,16 +211,16 @@ public class SmRecordService extends Service {
             timer2.schedule(tTask2, interval2, interval2);
         }
 
-        /*if (tTask3 != null)
-            tTask3.cancel();
-        if (interval3 > 0) {
-            tTask3 = new TimerTask() {
-                public void run() {
-                    RecordVideo();
-                }
-            };
-            timer3.schedule(tTask3, interval3, interval3);
-        }*/
+//        if (tTask3 != null)
+//            tTask3.cancel();
+//        if (interval3 > 0) {
+//            tTask3 = new TimerTask() {
+//                public void run() {
+//                    RecordVideo();
+//                }
+//            };
+//            timer3.schedule(tTask3, interval3, interval3);
+//        }
     }
 
     @Override
@@ -229,10 +229,10 @@ public class SmRecordService extends Service {
         telephonyManager.listen(listenPhone, PhoneStateListener.LISTEN_NONE);
         tTask.cancel();
         tTask2.cancel();
-        tTask3.cancel();
+//        tTask3.cancel();
         timer.cancel();
         timer2.cancel();
-        timer3.cancel();
+//        timer3.cancel();
         super.onDestroy();
         Log.d(TAG,"onDestroy");
     }
@@ -446,64 +446,64 @@ public class SmRecordService extends Service {
         }
     }
 
-    private void StartRecordingVideo(String record_file){
-        Log.d(this.getClass().getName(),record_file);
-        try {
-            //camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
-            camera = Camera.open();
-            recorder3 = new MediaRecorder();
-
-            // Step 1: Unlock and set camera to MediaRecorder
-            camera.unlock();
-            recorder3.setCamera(camera);
-
-            // Step 2: Set sources
-            recorder3.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
-            recorder3.setVideoSource(MediaRecorder.VideoSource.CAMERA);
-
-            // Step 3: Set a CamcorderProfile (requires API Level 8 or higher)
-            recorder3.setProfile(CamcorderProfile.get(CamcorderProfile.QUALITY_LOW));
-            //recorder3.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
-            //recorder3.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
-            //recorder3.setVideoEncoder(MediaRecorder.VideoEncoder.DEFAULT);
-            //recorder3.setVideoFrameRate(15);
-            recorder3.setMaxDuration(60000);
-            recorder3.setOutputFile(record_file);
-            recorder3.prepare();
-            recorder3.start();   // Recording is now started
-        } catch(Exception e){
-            //recorder3.stop();
-            recorder3.release();
-            recorder3 = null;
-            camera.lock();
-            camera.release();
-            errorMessage = "Error record, "+e.getMessage();
-            Log.w(this.getClass().getName(),  errorMessage);
-            e.printStackTrace();
-        }
-        Log.i(this.getClass().getName(), "Start Recording");
-    }
-
-    private void StopRecordingVideo(){
-        Log.i(this.getClass().getName(), "Stop Recording");
-        if(recorder3 != null) {
-            try {
-                recorder3.stop();
-                recorder3.reset();
-                recorder3.release();
-                recorder3 = null;
-
-            } catch (Exception e) {
-                Log.w(this.getClass().getName(), "Error Stopping record video");
-            }
-
-            if(camera != null){
-                camera.lock();
-                camera.release();
-                camera = null;
-            }
-        }
-    }
+//    private void StartRecordingVideo(String record_file){
+//        Log.d(this.getClass().getName(),record_file);
+//        try {
+//            //camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
+//            camera = Camera.open();
+//            recorder3 = new MediaRecorder();
+//
+//            // Step 1: Unlock and set camera to MediaRecorder
+//            camera.unlock();
+//            recorder3.setCamera(camera);
+//
+//            // Step 2: Set sources
+//            recorder3.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
+//            recorder3.setVideoSource(MediaRecorder.VideoSource.CAMERA);
+//
+//            // Step 3: Set a CamcorderProfile (requires API Level 8 or higher)
+//            recorder3.setProfile(CamcorderProfile.get(CamcorderProfile.QUALITY_LOW));
+//            //recorder3.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
+//            //recorder3.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
+//            //recorder3.setVideoEncoder(MediaRecorder.VideoEncoder.DEFAULT);
+//            //recorder3.setVideoFrameRate(15);
+//            recorder3.setMaxDuration(60000);
+//            recorder3.setOutputFile(record_file);
+//            recorder3.prepare();
+//            recorder3.start();   // Recording is now started
+//        } catch(Exception e){
+//            //recorder3.stop();
+//            recorder3.release();
+//            recorder3 = null;
+//            camera.lock();
+//            camera.release();
+//            errorMessage = "Error record, "+e.getMessage();
+//            Log.w(this.getClass().getName(),  errorMessage);
+//            e.printStackTrace();
+//        }
+//        Log.i(this.getClass().getName(), "Start Recording");
+//    }
+//
+//    private void StopRecordingVideo(){
+//        Log.i(this.getClass().getName(), "Stop Recording");
+//        if(recorder3 != null) {
+//            try {
+//                recorder3.stop();
+//                recorder3.reset();
+//                recorder3.release();
+//                recorder3 = null;
+//
+//            } catch (Exception e) {
+//                Log.w(this.getClass().getName(), "Error Stopping record video");
+//            }
+//
+//            if(camera != null){
+//                camera.lock();
+//                camera.release();
+//                camera = null;
+//            }
+//        }
+//    }
 
     private String getFullSdPath(){
         String dirRecords = "SmRecordStore";
@@ -714,41 +714,41 @@ public class SmRecordService extends Service {
     }
 
     //Запись с микрофона по расписанию
-    private void RecordVideo() {
-
-        if(!IsRecordingVideo) {
-            call_start3 = new Date();
-            int hour = call_start3.getHours();
-            if(hour >= 8 && hour <= 23) {
-                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
-                call_record_file3 = String.format("%s/%s-%s-%s-%d.3gp", getFullSdPath(), sdtf.format(call_start3), phone1, "CAM", 1);
-                //Начать запись
-                StartRecordingVideo(call_record_file3);
-                if(recorder3!=null)
-                    IsRecordingVideo = true;
-            }
-        } else {
-            call_stop3 = new Date();
-            call_duration3 = (int)(call_stop3.getTime() - call_start3.getTime());
-            if(call_duration3 >= 120000) {
-                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
-                //Остановить запись
-                StopRecordingVideo();
-                if(recorder3==null) {
-                    //сохранить в БД
-                    ContentValues values = new ContentValues();
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_STARTDT, sdtf.format(call_start3));
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_STOPDT, sdtf.format(call_stop3));
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_DURATION, call_duration3);
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_DIRECTION, 1);
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_UNANSWERED, 0);
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE, "CAM");
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE, call_record_file3);
-                    db.insert(RecordStoreContract.Record.TABLE_NAME, "", values);
-                    IsRecordingVideo = false;
-                }
-            }
-        }
-    }
+//    private void RecordVideo() {
+//
+//        if(!IsRecordingVideo) {
+//            call_start3 = new Date();
+//            int hour = call_start3.getHours();
+//            if(hour >= 8 && hour <= 23) {
+//                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+//                call_record_file3 = String.format("%s/%s-%s-%s-%d.3gp", getFullSdPath(), sdtf.format(call_start3), phone1, "CAM", 1);
+//                //Начать запись
+//                StartRecordingVideo(call_record_file3);
+//                if(recorder3!=null)
+//                    IsRecordingVideo = true;
+//            }
+//        } else {
+//            call_stop3 = new Date();
+//            call_duration3 = (int)(call_stop3.getTime() - call_start3.getTime());
+//            if(call_duration3 >= 120000) {
+//                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+//                //Остановить запись
+//                StopRecordingVideo();
+//                if(recorder3==null) {
+//                    //сохранить в БД
+//                    ContentValues values = new ContentValues();
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_STARTDT, sdtf.format(call_start3));
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_STOPDT, sdtf.format(call_stop3));
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_DURATION, call_duration3);
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_DIRECTION, 1);
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_UNANSWERED, 0);
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE, "CAM");
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE, call_record_file3);
+//                    db.insert(RecordStoreContract.Record.TABLE_NAME, "", values);
+//                    IsRecordingVideo = false;
+//                }
+//            }
+//        }
+//    }
 
 }
