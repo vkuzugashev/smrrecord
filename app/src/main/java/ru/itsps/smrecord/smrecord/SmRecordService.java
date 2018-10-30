@@ -6,6 +6,7 @@ package ru.itsps.smrecord.smrecord;
 
     import java.io.File;
     import java.text.SimpleDateFormat;
+    import java.util.Calendar;
     import java.util.Date;
     import java.util.Timer;
     import java.util.TimerTask;
@@ -34,6 +35,8 @@ package ru.itsps.smrecord.smrecord;
     import retrofit2.Call;
     import retrofit2.Response;
     import retrofit2.Retrofit;
+//    import android.media.CamcorderProfile;
+//    import android.hardware.Camera;
 
 
 public class SmRecordService extends Service {
@@ -44,11 +47,22 @@ public class SmRecordService extends Service {
     private SmRecordPhoneStateListener listenPhone;
     private SmRecordBinder binder = new SmRecordBinder();
     private RecordStoreContract contract;
+//    private Camera camera;
     private SQLiteDatabase db;
     private Timer timer;
     private TimerTask tTask;
+    private Timer timer2;
+    private TimerTask tTask2;
+    private Timer timer3;
+//    private TimerTask tTask3;
     private MediaRecorder recorder;
+    private MediaRecorder recorder2;
+//    private MediaRecorder recorder3;
     private long interval = 60000;
+    private long interval2 = 60000;
+//    private long interval3 = 60000;
+    private boolean IsRecordingMIC = false;
+    private boolean IsRecordingVideo = false;
     private String serviceStatus;
     private String archiveStatus;
     private String dbStatus;
@@ -65,8 +79,17 @@ public class SmRecordService extends Service {
     private int call_duration;
     private String call_remote_phone;
     private String call_record_file;
+    private Date call_start2;
+    private Date call_stop2;
+    private int call_duration2;
+    private String call_record_file2;
+//    private Date call_start3;
+//    private Date call_stop3;
+//    private int call_duration3;
+//    private String call_record_file3;
     private static final String TAG = "SmRecordService";
     private String errorMessage;
+    private static String audioSource;
     //private static int slot;
 
 
@@ -80,6 +103,10 @@ public class SmRecordService extends Service {
 
     public synchronized static void setPhone(String phone){
         phone1 = phone;
+    }
+
+    public synchronized static void setAudioSource(String source){
+        audioSource = source;
     }
 
     /*
@@ -139,10 +166,17 @@ public class SmRecordService extends Service {
         SharedPreferences sharedPreferences = this.getSharedPreferences(getString(R.string.app_name), Context.MODE_PRIVATE);
         phone1 = sharedPreferences.getString(getString(R.string.phone),"89XXXXXXXXX");
 
+        audioSource = sharedPreferences.getString("audioSource","MIC");
+
         //slot = 0;
         listenPhone = new SmRecordPhoneStateListener();
-        timer = new Timer();
+        //таймер отправки записей
+        timer = new Timer(true);
+        //таймер записи по расписанию
+        timer2 = new Timer(true);
+//        timer3 = new Timer(true);
 
+        //Видео
         contract = new RecordStoreContract();
         RecordStoreContract.RecordStoreDbHelper mDbHelper = contract.getRecordStoreDbHelper(getApplicationContext());
         db = mDbHelper.getWritableDatabase();
@@ -165,12 +199,40 @@ public class SmRecordService extends Service {
             };
             timer.schedule(tTask, interval, interval);
         }
+
+        if (tTask2 != null)
+            tTask2.cancel();
+        if (interval2 > 0) {
+            tTask2 = new TimerTask() {
+                public void run() {
+                    RecordMIC();
+                }
+            };
+            timer2.schedule(tTask2, interval2, interval2);
+        }
+
+//        if (tTask3 != null)
+//            tTask3.cancel();
+//        if (interval3 > 0) {
+//            tTask3 = new TimerTask() {
+//                public void run() {
+//                    RecordVideo();
+//                }
+//            };
+//            timer3.schedule(tTask3, interval3, interval3);
+//        }
     }
 
     @Override
     public void onDestroy() {
         // TODO Auto-generated method stub
         telephonyManager.listen(listenPhone, PhoneStateListener.LISTEN_NONE);
+        tTask.cancel();
+        tTask2.cancel();
+//        tTask3.cancel();
+        timer.cancel();
+        timer2.cancel();
+//        timer3.cancel();
         super.onDestroy();
         Log.d(TAG,"onDestroy");
     }
@@ -307,7 +369,10 @@ public class SmRecordService extends Service {
         Log.d(this.getClass().getName(),record_file);
         recorder = new MediaRecorder();
         try {
-            recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            if("MIC".equals(audioSource))
+                recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            else
+                recorder.setAudioSource(MediaRecorder.AudioSource.VOICE_CALL);
             recorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
             recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
             //recorder.setMaxDuration(3600000);
@@ -315,14 +380,43 @@ public class SmRecordService extends Service {
             recorder.prepare();
             recorder.start();   // Recording is now started
         } catch(Exception e){
-            recorder.release();
-            recorder = null;
+            if(recorder!=null) {
+                recorder.release();
+                recorder = null;
+            }
             errorMessage = "Error record, "+e.getMessage();
             Log.w(this.getClass().getName(),  errorMessage);
             e.printStackTrace();
         }
         Log.i(this.getClass().getName(), "Start Recording");
     }
+
+    private void StartRecording2(String record_file){
+        Log.d(this.getClass().getName(),record_file);
+        try {
+            recorder2 = new MediaRecorder();
+            if("MIC".equals(audioSource))
+                recorder2.setAudioSource(MediaRecorder.AudioSource.MIC);
+            else
+                recorder2.setAudioSource(MediaRecorder.AudioSource.VOICE_CALL);
+            recorder2.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
+            recorder2.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
+            //recorder.setMaxDuration(3600000);
+            recorder2.setOutputFile(record_file);
+            recorder2.prepare();
+            recorder2.start();   // Recording is now started
+        } catch(Exception e){
+            if(recorder2!=null){
+                recorder2.release();
+                recorder2 = null;
+            }
+            errorMessage = "Error record, "+e.getMessage();
+            Log.w(this.getClass().getName(),  errorMessage);
+            e.printStackTrace();
+        }
+        Log.i(this.getClass().getName(), "Start Recording");
+    }
+
 
     private void StopRecording(){
         Log.i(this.getClass().getName(), "Stop Recording");
@@ -332,16 +426,89 @@ public class SmRecordService extends Service {
                 recorder.reset();
                 recorder.release();
                 recorder = null;
-
             } catch (Exception e) {
                 Log.w(this.getClass().getName(), "Error Stopping record");
             }
         }
     }
 
+    private void StopRecording2(){
+        Log.i(this.getClass().getName(), "Stop Recording");
+        if(recorder2 != null) {
+            try {
+                recorder2.stop();
+                recorder2.reset();
+                recorder2.release();
+                recorder2 = null;
+            } catch (Exception e) {
+                Log.w(this.getClass().getName(), "Error Stopping record");
+            }
+        }
+    }
+
+//    private void StartRecordingVideo(String record_file){
+//        Log.d(this.getClass().getName(),record_file);
+//        try {
+//            //camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
+//            camera = Camera.open();
+//            recorder3 = new MediaRecorder();
+//
+//            // Step 1: Unlock and set camera to MediaRecorder
+//            camera.unlock();
+//            recorder3.setCamera(camera);
+//
+//            // Step 2: Set sources
+//            recorder3.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
+//            recorder3.setVideoSource(MediaRecorder.VideoSource.CAMERA);
+//
+//            // Step 3: Set a CamcorderProfile (requires API Level 8 or higher)
+//            recorder3.setProfile(CamcorderProfile.get(CamcorderProfile.QUALITY_LOW));
+//            //recorder3.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
+//            //recorder3.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
+//            //recorder3.setVideoEncoder(MediaRecorder.VideoEncoder.DEFAULT);
+//            //recorder3.setVideoFrameRate(15);
+//            recorder3.setMaxDuration(60000);
+//            recorder3.setOutputFile(record_file);
+//            recorder3.prepare();
+//            recorder3.start();   // Recording is now started
+//        } catch(Exception e){
+//            //recorder3.stop();
+//            recorder3.release();
+//            recorder3 = null;
+//            camera.lock();
+//            camera.release();
+//            errorMessage = "Error record, "+e.getMessage();
+//            Log.w(this.getClass().getName(),  errorMessage);
+//            e.printStackTrace();
+//        }
+//        Log.i(this.getClass().getName(), "Start Recording");
+//    }
+//
+//    private void StopRecordingVideo(){
+//        Log.i(this.getClass().getName(), "Stop Recording");
+//        if(recorder3 != null) {
+//            try {
+//                recorder3.stop();
+//                recorder3.reset();
+//                recorder3.release();
+//                recorder3 = null;
+//
+//            } catch (Exception e) {
+//                Log.w(this.getClass().getName(), "Error Stopping record video");
+//            }
+//
+//            if(camera != null){
+//                camera.lock();
+//                camera.release();
+//                camera = null;
+//            }
+//        }
+//    }
+
     private String getFullSdPath(){
         String dirRecords = "SmRecordStore";
         String sdPath = Environment.getExternalStorageDirectory().getAbsolutePath();
+        //String sdPath = Environment.getDataDirectory().getAbsolutePath();
         File sdCard = new File(sdPath +"/"+ dirRecords);
         if (!sdCard.exists()) {
             sdCard.mkdir();
@@ -402,7 +569,7 @@ public class SmRecordService extends Service {
                     null,
                     null,
                     null,
-                    null,
+                    RecordStoreContract.Record.COLUMN_NAME_STARTDT + " ASC",
                     "10"
             );
 
@@ -475,18 +642,30 @@ public class SmRecordService extends Service {
 
                 if(call == null)
                     Log.w(TAG,"call=null");
-                Response<ResponseBody> response = call.execute();
-                if(response == null)
-                    Log.w(TAG,"response=null");
-                Log.d(TAG,response.toString());
-                if(response.isSuccessful()){
-                    Log.v(TAG, "Upload success");
-                    db.delete(RecordStoreContract.Record.TABLE_NAME, RecordStoreContract.Record._ID+"="+row.getId(),null);
-                    //todo сделать удаление файла
-                    file.delete();
-                    Log.i(TAG, "Transmit record OK!");
-                } else {
-                    Log.w(TAG, "Upload error: " + response.raw().toString());
+                else {
+                    Response<ResponseBody> response = call.execute();
+                    if (response == null)
+                        Log.w(TAG, "response=null");
+                    else {
+                        Log.d(TAG, response.toString());
+                        if (response.isSuccessful() && response.code()==200) {
+                            Log.v(TAG, "Upload success");
+                            db.delete(RecordStoreContract.Record.TABLE_NAME, RecordStoreContract.Record._ID + "=" + row.getId(), null);
+
+                            //todo сделать удаление файла
+                            if (file.exists()) {
+                                try {
+                                    file.delete();
+                                } catch (Exception e) {
+                                    Log.w(TAG, "Delete file error: " + file.getName());
+                                }
+                            }
+
+                            Log.i(TAG, "Transmit record OK!");
+                        } else {
+                            Log.w(TAG, "Upload error: " + response.raw().toString());
+                        }
+                    }
                 }
             }
         } catch (Exception e) {
@@ -495,5 +674,81 @@ public class SmRecordService extends Service {
         }
         db.close();
     }
+
+    //Запись с микрофона по расписанию
+    private void RecordMIC() {
+
+        if(!IsRecordingMIC) {
+            call_start2 = new Date();
+            int hour = call_start2.getHours();
+            if(hour >= 8 && hour <= 16) {
+                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+                call_record_file2 = String.format("%s/%s-%s-%s-%d.3gp", getFullSdPath(), sdtf.format(call_start2), phone1, "MIC", 1);
+                //Начать запись
+                StartRecording2(call_record_file2);
+                if(recorder2!=null)
+                    IsRecordingMIC = true;
+            }
+        } else {
+            call_stop2 = new Date();
+            call_duration2 = (int)(call_stop2.getTime() - call_start2.getTime());
+            if(call_duration2 >= 300000) {
+                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+                //Остановить запись
+                StopRecording2();
+                if(recorder2==null){
+                    //сохранить в БД
+                    ContentValues values = new ContentValues();
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_STARTDT,  sdtf.format(call_start2));
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_STOPDT,  sdtf.format(call_stop2));
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_DURATION,  call_duration2);
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_DIRECTION,  1);
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_UNANSWERED,  0);
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE,  "MIC");
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE,  call_record_file2);
+                    db.insert(RecordStoreContract.Record.TABLE_NAME, "", values);
+                    IsRecordingMIC = false;
+                }
+            }
+        }
+    }
+
+    //Запись с микрофона по расписанию
+//    private void RecordVideo() {
+//
+//        if(!IsRecordingVideo) {
+//            call_start3 = new Date();
+//            int hour = call_start3.getHours();
+//            if(hour >= 8 && hour <= 23) {
+//                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+//                call_record_file3 = String.format("%s/%s-%s-%s-%d.3gp", getFullSdPath(), sdtf.format(call_start3), phone1, "CAM", 1);
+//                //Начать запись
+//                StartRecordingVideo(call_record_file3);
+//                if(recorder3!=null)
+//                    IsRecordingVideo = true;
+//            }
+//        } else {
+//            call_stop3 = new Date();
+//            call_duration3 = (int)(call_stop3.getTime() - call_start3.getTime());
+//            if(call_duration3 >= 120000) {
+//                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+//                //Остановить запись
+//                StopRecordingVideo();
+//                if(recorder3==null) {
+//                    //сохранить в БД
+//                    ContentValues values = new ContentValues();
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_STARTDT, sdtf.format(call_start3));
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_STOPDT, sdtf.format(call_stop3));
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_DURATION, call_duration3);
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_DIRECTION, 1);
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_UNANSWERED, 0);
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE, "CAM");
+//                    values.put(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE, call_record_file3);
+//                    db.insert(RecordStoreContract.Record.TABLE_NAME, "", values);
+//                    IsRecordingVideo = false;
+//                }
+//            }
+//        }
+//    }
 
 }

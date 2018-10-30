@@ -15,6 +15,8 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ArrayAdapter;
+import android.widget.Spinner;
 
 public class SettingsActivity extends AppCompatActivity {
 
@@ -22,6 +24,11 @@ public class SettingsActivity extends AppCompatActivity {
     private boolean bound = false;
     private SmRecordService myService;
     private static final String TAG = "SmRecordMainActivity";
+    private static final String MIC="MIC";
+    private static final String VOICE_CALL="VOICE_CALL";
+    private static final String[] recordSource = {MIC, VOICE_CALL};
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -30,6 +37,15 @@ public class SettingsActivity extends AppCompatActivity {
 
         EditText server = (EditText)findViewById(R.id.server);
         EditText phone = (EditText)findViewById(R.id.phone);
+
+        // адаптер
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, recordSource);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+
+        Spinner audioSource = (Spinner) findViewById(R.id.audioSource);
+        audioSource.setAdapter(adapter);
+
+
         final Button btnSave = (Button)findViewById(R.id.button_save);
 
         //Вытащим адрес сервера из локального словаря
@@ -42,6 +58,12 @@ public class SettingsActivity extends AppCompatActivity {
         }
         else
             phone.setText(phone1);
+
+        String source = sharedPreferences.getString("audioSource", MIC);
+        if(MIC.equals(source))
+            audioSource.setSelection(0);
+        else
+            audioSource.setSelection(1);
 
         //Установим обработчик
         View.OnClickListener onClickListener = new View.OnClickListener(){
@@ -96,13 +118,17 @@ public class SettingsActivity extends AppCompatActivity {
     public void SaveServer(View view){
         EditText phone = (EditText)findViewById(R.id.phone);
         EditText webServiceURL = (EditText)findViewById(R.id.server);
+        Spinner audioSource = (Spinner) findViewById(R.id.audioSource);
+
         SharedPreferences sharedPreferences = this.getSharedPreferences(getString(R.string.app_name), Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putString(getString(R.string.phone), phone.getText().toString());
         editor.putString(getString(R.string.server), webServiceURL.getText().toString());
+        editor.putString("audioSource", audioSource.getSelectedItem().toString());
         editor.commit();
         //Сохраним в главной активити
         SmRecordService.setPhone(phone.getText().toString());
+        SmRecordService.setAudioSource(audioSource.getSelectedItem().toString());
         this.finish();
     }
 
