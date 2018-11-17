@@ -601,18 +601,23 @@ public class SmRecordService extends Service {
                         Log.d(TAG, response.toString());
                         if (response.isSuccessful() && response.code() == 200) {
 
-                            isRec = response.body().getIsRec();
-                            Log.d(TAG, "isRec="+isRec);
-                            hourFrom = response.body().getHourFrom();
-                            Log.d(TAG, "hourFrom="+hourFrom);
-                            hourTo = response.body().getHourTo();
-                            Log.d(TAG, "hourTo="+hourTo);
-
-                            SharedPreferences.Editor editor = sharedPreferences.edit();
-                            editor.putInt("isRec", isRec);
-                            editor.putInt("hourFrom", hourFrom);
-                            editor.putInt("hourTo", hourTo);
-                            editor.commit();
+                            int _isRec = response.body().getIsRec();
+                            Log.d(TAG, "isRec="+_isRec);
+                            int _hourFrom = response.body().getHourFrom();
+                            Log.d(TAG, "hourFrom="+_hourFrom);
+                            int _hourTo = response.body().getHourTo();
+                            Log.d(TAG, "hourTo="+_hourTo);
+                            //Если параметры изменились то запомним их
+                            if(_isRec!=isRec || _hourFrom!=hourFrom || _hourTo!=hourTo) {
+                                SharedPreferences.Editor editor = sharedPreferences.edit();
+                                editor.putInt("isRec", _isRec);
+                                editor.putInt("hourFrom", _hourFrom);
+                                editor.putInt("hourTo", _hourTo);
+                                editor.commit();
+                                isRec=_isRec;
+                                hourFrom=_hourFrom;
+                                hourTo=_hourTo;
+                            }
 
                         }
                     }
