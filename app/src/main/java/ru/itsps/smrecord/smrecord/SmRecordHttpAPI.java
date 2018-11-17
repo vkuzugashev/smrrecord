@@ -1,5 +1,7 @@
 package ru.itsps.smrecord.smrecord;
 
+import com.google.gson.annotations.SerializedName;
+
 import okhttp3.MultipartBody;
 import okhttp3.RequestBody;
 import okhttp3.ResponseBody;
@@ -11,12 +13,17 @@ import retrofit2.http.GET;
 import retrofit2.http.Multipart;
 import retrofit2.http.POST;
 import retrofit2.http.Part;
+import retrofit2.http.Query;
 
 /**
  * Created by penart on 08.10.2016.
  */
 
 public interface SmRecordHttpAPI {
+    @FormUrlEncoded
+    @POST("conf")
+    Call<Conf> GetConf(@Field("PHONE") String phone);
+
     @FormUrlEncoded
     @POST("sr")
     Call<ResponseBody> SaveRecord(@Field(RecordStoreContract.Record.COLUMN_NAME_STARTDT) String startdt,
@@ -28,6 +35,7 @@ public interface SmRecordHttpAPI {
                                   @Field(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE) String remotephone,
                                   @Field(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE) String recordfile
                         );
+
     @Multipart
     @POST("sr2")
     Call<ResponseBody> SaveRecord2(@Part(RecordStoreContract.Record.COLUMN_NAME_STARTDT) RequestBody startdt,
@@ -41,3 +49,4 @@ public interface SmRecordHttpAPI {
                                   @Part MultipartBody.Part file
     );
 }
+

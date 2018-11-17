@@ -13,6 +13,8 @@ package ru.itsps.smrecord.smrecord;
     import java.util.Vector;
 
     import android.app.Service;
+    import android.app.Notification;
+    import android.os.Build;
     import android.content.ContentValues;
     import android.content.Context;
     import android.content.Intent;
@@ -28,6 +30,10 @@ package ru.itsps.smrecord.smrecord;
     import android.telephony.PhoneStateListener;
     import android.telephony.TelephonyManager;
     import android.util.Log;
+
+    import com.google.gson.Gson;
+    import com.google.gson.GsonBuilder;
+
     import okhttp3.MediaType;
     import okhttp3.MultipartBody;
     import okhttp3.RequestBody;
@@ -35,6 +41,7 @@ package ru.itsps.smrecord.smrecord;
     import retrofit2.Call;
     import retrofit2.Response;
     import retrofit2.Retrofit;
+    import retrofit2.converter.gson.GsonConverterFactory;
 //    import android.media.CamcorderProfile;
 //    import android.hardware.Camera;
 
@@ -90,6 +97,9 @@ public class SmRecordService extends Service {
     private static final String TAG = "SmRecordService";
     private String errorMessage;
     private static String audioSource;
+    private int isRec;
+    private int hourFrom;
+    private int hourTo;
     //private static int slot;
 
 
@@ -168,6 +178,10 @@ public class SmRecordService extends Service {
 
         audioSource = sharedPreferences.getString("audioSource","MIC");
 
+        isRec = sharedPreferences.getInt("isRec", 1);
+        hourFrom = sharedPreferences.getInt("hourFrom", 8);
+        hourTo = sharedPreferences.getInt("hourTo", 16);
+
         //slot = 0;
         listenPhone = new SmRecordPhoneStateListener();
         //таймер отправки записей
@@ -182,6 +196,17 @@ public class SmRecordService extends Service {
         db = mDbHelper.getWritableDatabase();
         dbStatus="Ok";
         //mDbHelper.ClearDb(db);
+
+        /*Notification.Builder builder = new Notification.Builder(this)
+                .setSmallIcon(R.drawable.common_ic_googleplayservices)
+                .setWhen(System.currentTimeMillis() + interval2);
+        Notification notification;
+        if (Build.VERSION.SDK_INT < 16)
+            notification = builder.getNotification();
+        else
+            notification = builder.build();
+        startForeground(777, notification);*/
+
         Log.d(TAG,"onCreate");
     }
 
@@ -234,6 +259,14 @@ public class SmRecordService extends Service {
         timer2.cancel();
 //        timer3.cancel();
         super.onDestroy();
+
+        //Removing any notifications
+        //notificationManager.cancel(DEFAULT_NOTIFICATION_ID);
+
+        //Disabling service
+        //stopSelf();
+
+
         Log.d(TAG,"onDestroy");
     }
 
@@ -250,7 +283,8 @@ public class SmRecordService extends Service {
         Schedule();
         Log.d(TAG,"onStartCommand");
 
-        return super.onStartCommand(intent, flags, startId);
+        //return super.onStartCommand(intent, flags, startId);
+        return START_STICKY;
     }
 
     @Override
@@ -536,19 +570,56 @@ public class SmRecordService extends Service {
         RecordStoreContract contract = new RecordStoreContract();
         RecordStoreContract.RecordStoreDbHelper mDbHelper = contract.getRecordStoreDbHelper(getApplicationContext());
         SQLiteDatabase db = mDbHelper.getWritableDatabase();
+
         try {
+
             SharedPreferences sharedPreferences = this.getSharedPreferences(getString(R.string.app_name), Context.MODE_PRIVATE);
             String server = sharedPreferences.getString(getString(R.string.server),"smr.biws.ru");
+
             if("".equals(server)) {
                 Log.i(TAG,"Server not defined!");
                 return;
             }
-/*
-            CredentialsProvider credsProvider = new BasicCredentialsProvider();
-            credsProvider.setCredentials(AuthScope.ANY, new NTCredentials(
-                    (String) params[1]));
-            hc.setCredentialsProvider(credsProvider);
-             */
+
+
+            Gson gson = new GsonBuilder()
+                    .setLenient()
+                    .create();
+            //Отправим данные на сервер
+            Retrofit retrofit = new Retrofit.Builder()
+                    .baseUrl("http://"+server+"/smrecord/")
+                    .addConverterFactory(GsonConverterFactory.create(gson))
+                    .build();
+            SmRecordHttpAPI service = retrofit.create(SmRecordHttpAPI.class);
+
+            //Получим настройки с сервера
+            Call<Conf> call = service.GetConf(phone1);
+            if(call != null) {
+                try{
+                    Response<Conf> response = call.execute();
+                    if (response != null) {
+                        Log.d(TAG, response.toString());
+                        if (response.isSuccessful() && response.code() == 200) {
+
+                            isRec = response.body().getIsRec();
+                            Log.d(TAG, "isRec="+isRec);
+                            hourFrom = response.body().getHourFrom();
+                            Log.d(TAG, "hourFrom="+hourFrom);
+                            hourTo = response.body().getHourTo();
+                            Log.d(TAG, "hourTo="+hourTo);
+
+                            SharedPreferences.Editor editor = sharedPreferences.edit();
+                            editor.putInt("isRec", isRec);
+                            editor.putInt("hourFrom", hourFrom);
+                            editor.putInt("hourTo", hourTo);
+                            editor.commit();
+
+                        }
+                    }
+                } catch(Exception e) {
+                    Log.w(TAG, e.getMessage());
+                }
+            }
 
 
             String[] columns = {
@@ -562,14 +633,20 @@ public class SmRecordService extends Service {
                     RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE,
             };
 
+            SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+            //Брать только записи старше 10 минут
+            Calendar cal = Calendar.getInstance();
+            cal.add(Calendar.MINUTE, -10);
+            Date timeFrom = cal.getTime();
+
             Cursor cur = db.query(
                     RecordStoreContract.Record.TABLE_NAME,
                     columns,
+                    null,//RecordStoreContract.Record.COLUMN_NAME_STARTDT +" < ?",
+                    null,//new String[] {sdtf.format(timeFrom)},
                     null,
                     null,
-                    null,
-                    null,
-                    RecordStoreContract.Record.COLUMN_NAME_STARTDT + " ASC",
+                    null, //RecordStoreContract.Record.COLUMN_NAME_STARTDT + " ASC",
                     "10"
             );
 
@@ -577,6 +654,7 @@ public class SmRecordService extends Service {
                 db.close();
                 return;
             }
+
             Vector<RecordRow> rows = new Vector<RecordRow>();
             do {
                 RecordRow row = new RecordRow();
@@ -592,11 +670,7 @@ public class SmRecordService extends Service {
             } while (cur.moveToNext());
             cur.close();
 
-            //Отправим данные на сервер
-            Retrofit retrofit = new Retrofit.Builder()
-                    .baseUrl("http://"+server+"/smrecord/")
-                    .build();
-            SmRecordHttpAPI service = retrofit.create(SmRecordHttpAPI.class);
+
 
             //Отправим на сервер данные
             for (RecordRow row : rows) {
@@ -610,12 +684,12 @@ public class SmRecordService extends Service {
                         row.getCall_remote_phone(),
                         row.getCall_record_file()
                 ));
-                Call<ResponseBody> call;
                 File file = new File(row.getCall_record_file()==null?"":row.getCall_record_file());
-                if(file.exists()) {
+                Call<ResponseBody> call2;
+                if(row.getCall_record_file()!=null && file.exists()) {
                     Log.d(TAG,"service.SaveRecord2");
                     //todo сделать обрезание пути у файла записи
-                    call = service.SaveRecord2(
+                    call2 = service.SaveRecord2(
                             createPartFromString(row.getCall_start()),
                             createPartFromString(row.getCall_stop() == null ? "" : row.getCall_stop()),
                             createPartFromString(Integer.toString(row.getCall_direction())),
@@ -628,7 +702,7 @@ public class SmRecordService extends Service {
                 }
                 else{
                     Log.d(TAG,"service.SaveRecord");
-                    call = service.SaveRecord(
+                    call2 = service.SaveRecord(
                             row.getCall_start(),
                             row.getCall_stop(),
                             row.getCall_direction(),
@@ -640,31 +714,31 @@ public class SmRecordService extends Service {
                 }
                 Log.d(TAG,"End SaveRecord");
 
-                if(call == null)
-                    Log.w(TAG,"call=null");
-                else {
-                    Response<ResponseBody> response = call.execute();
-                    if (response == null)
-                        Log.w(TAG, "response=null");
-                    else {
-                        Log.d(TAG, response.toString());
-                        if (response.isSuccessful() && response.code()==200) {
-                            Log.v(TAG, "Upload success");
-                            db.delete(RecordStoreContract.Record.TABLE_NAME, RecordStoreContract.Record._ID + "=" + row.getId(), null);
+                if(call2 != null) {
+                    try {
+                        Response<ResponseBody> response2 = call2.execute();
+                        if (response2 != null) {
+                            Log.d(TAG, response2.toString());
+                            if (response2.isSuccessful() && response2.code() == 200) {
+                                Log.v(TAG, "Upload success");
+                                db.delete(RecordStoreContract.Record.TABLE_NAME, RecordStoreContract.Record._ID + "=" + row.getId(), null);
 
-                            //todo сделать удаление файла
-                            if (file.exists()) {
-                                try {
-                                    file.delete();
-                                } catch (Exception e) {
-                                    Log.w(TAG, "Delete file error: " + file.getName());
+                                //todo сделать удаление файла
+                                if (file.exists()) {
+                                    try {
+                                        file.delete();
+                                    } catch (Exception e) {
+                                        Log.w(TAG, "Delete file error: " + file.getName());
+                                    }
                                 }
-                            }
 
-                            Log.i(TAG, "Transmit record OK!");
-                        } else {
-                            Log.w(TAG, "Upload error: " + response.raw().toString());
+                                Log.i(TAG, "Transmit record OK!");
+                            } else {
+                                Log.w(TAG, "Upload error: " + response2.raw().toString());
+                            }
                         }
+                    } catch(Exception e) {
+                        Log.w(TAG, e.getMessage());
                     }
                 }
             }
@@ -678,39 +752,40 @@ public class SmRecordService extends Service {
     //Запись с микрофона по расписанию
     private void RecordMIC() {
 
-        if(!IsRecordingMIC) {
-            call_start2 = new Date();
-            int hour = call_start2.getHours();
-            if(hour >= 8 && hour <= 16) {
-                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
-                call_record_file2 = String.format("%s/%s-%s-%s-%d.3gp", getFullSdPath(), sdtf.format(call_start2), phone1, "MIC", 1);
-                //Начать запись
-                StartRecording2(call_record_file2);
-                if(recorder2!=null)
-                    IsRecordingMIC = true;
-            }
-        } else {
-            call_stop2 = new Date();
-            call_duration2 = (int)(call_stop2.getTime() - call_start2.getTime());
-            if(call_duration2 >= 300000) {
-                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
-                //Остановить запись
-                StopRecording2();
-                if(recorder2==null){
-                    //сохранить в БД
-                    ContentValues values = new ContentValues();
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_STARTDT,  sdtf.format(call_start2));
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_STOPDT,  sdtf.format(call_stop2));
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_DURATION,  call_duration2);
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_DIRECTION,  1);
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_UNANSWERED,  0);
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE,  "MIC");
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE,  call_record_file2);
-                    db.insert(RecordStoreContract.Record.TABLE_NAME, "", values);
-                    IsRecordingMIC = false;
+            if (isRec==1 && !IsRecordingMIC) {
+                call_start2 = new Date();
+                int hour = call_start2.getHours();
+                if (hour >= hourFrom && hour <= hourTo) {
+                    SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+                    call_record_file2 = String.format("%s/%s-%s-%s-%d.3gp", getFullSdPath(), sdtf.format(call_start2), phone1, "MIC", 1);
+                    //Начать запись
+                    StartRecording2(call_record_file2);
+                    if (recorder2 != null)
+                        IsRecordingMIC = true;
+                }
+            } else if(IsRecordingMIC) {
+                call_stop2 = new Date();
+                call_duration2 = (int) (call_stop2.getTime() - call_start2.getTime());
+                if (call_duration2 >= 300000) {
+                    SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+                    //Остановить запись
+                    StopRecording2();
+                    if (recorder2 == null) {
+                        //сохранить в БД
+                        ContentValues values = new ContentValues();
+                        values.put(RecordStoreContract.Record.COLUMN_NAME_STARTDT, sdtf.format(call_start2));
+                        values.put(RecordStoreContract.Record.COLUMN_NAME_STOPDT, sdtf.format(call_stop2));
+                        values.put(RecordStoreContract.Record.COLUMN_NAME_DURATION, call_duration2);
+                        values.put(RecordStoreContract.Record.COLUMN_NAME_DIRECTION, 1);
+                        values.put(RecordStoreContract.Record.COLUMN_NAME_UNANSWERED, 0);
+                        values.put(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE, "MIC");
+                        values.put(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE, call_record_file2);
+                        db.insert(RecordStoreContract.Record.TABLE_NAME, "", values);
+                        IsRecordingMIC = false;
+                    }
                 }
             }
-        }
+
     }
 
     //Запись с микрофона по расписанию
