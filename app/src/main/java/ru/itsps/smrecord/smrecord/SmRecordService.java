@@ -724,7 +724,7 @@ public class SmRecordService extends Service {
                         Response<ResponseBody> response2 = call2.execute();
                         if (response2 != null) {
                             Log.d(TAG, response2.toString());
-                            if (response2.isSuccessful() && response2.code() == 200) {
+                            if (response2.isSuccessful()) {
                                 Log.v(TAG, "Upload success");
                                 db.delete(RecordStoreContract.Record.TABLE_NAME, RecordStoreContract.Record._ID + "=" + row.getId(), null);
 
