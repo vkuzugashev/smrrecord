@@ -6,6 +6,7 @@ package ru.itsps.smrecord.smrecord;
 
     import java.io.File;
     import java.text.SimpleDateFormat;
+    import java.util.ArrayList;
     import java.util.Calendar;
     import java.util.Date;
     import java.util.Timer;
@@ -13,8 +14,6 @@ package ru.itsps.smrecord.smrecord;
     import java.util.Vector;
 
     import android.app.Service;
-    import android.app.Notification;
-    import android.os.Build;
     import android.content.ContentValues;
     import android.content.Context;
     import android.content.Intent;
@@ -22,6 +21,10 @@ package ru.itsps.smrecord.smrecord;
     import android.database.Cursor;
     import android.database.DatabaseUtils;
     import android.database.sqlite.SQLiteDatabase;
+    import android.location.Location;
+    import android.location.LocationListener;
+    import android.location.LocationManager;
+    import android.os.Bundle;
     import android.media.MediaRecorder;
     import android.os.Binder;
     import android.os.Environment;
@@ -68,8 +71,9 @@ public class SmRecordService extends Service {
     private long interval = 60000;
     private long interval2 = 60000;
 //    private long interval3 = 60000;
-    private boolean IsRecordingMIC = false;
-    private boolean IsRecordingVideo = false;
+    private boolean isRecMIC = false;
+    private boolean isRecVideo = false;
+    private boolean isRecGPS = false;
     private String serviceStatus;
     private String archiveStatus;
     private String dbStatus;
@@ -100,7 +104,14 @@ public class SmRecordService extends Service {
     private int isRec;
     private int hourFrom;
     private int hourTo;
+    private LocationManager locationManager;
     //private static int slot;
+    volatile private long time;
+    volatile private double lat;
+    volatile private double lon;
+    // private int sendCount;
+    private int statusNet;
+    private boolean enabledNet;
 
 
     public synchronized static String getOutcoming_nr() {
@@ -153,7 +164,6 @@ public class SmRecordService extends Service {
         return lineStatus;
     }
 
-
     @Override
     public boolean onUnbind(Intent intent) {
         // TODO Auto-generated method stub
@@ -172,6 +182,10 @@ public class SmRecordService extends Service {
         IMEI = telephonyManager.getDeviceId();
 //        phone1 = telephonyManager.getLine1Number();
 
+
+        locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+
+
         //Вытащим номер телефона из локального словаря
         SharedPreferences sharedPreferences = this.getSharedPreferences(getString(R.string.app_name), Context.MODE_PRIVATE);
         phone1 = sharedPreferences.getString(getString(R.string.phone),"89XXXXXXXXX");
@@ -181,6 +195,7 @@ public class SmRecordService extends Service {
         isRec = sharedPreferences.getInt("isRec", 1);
         hourFrom = sharedPreferences.getInt("hourFrom", 8);
         hourTo = sharedPreferences.getInt("hourTo", 16);
+        isRecGPS = sharedPreferences.getBoolean("isRecordingGPS", false);
 
         //slot = 0;
         listenPhone = new SmRecordPhoneStateListener();
@@ -195,7 +210,6 @@ public class SmRecordService extends Service {
         RecordStoreContract.RecordStoreDbHelper mDbHelper = contract.getRecordStoreDbHelper(getApplicationContext());
         db = mDbHelper.getWritableDatabase();
         dbStatus="Ok";
-        //mDbHelper.ClearDb(db);
 
         /*Notification.Builder builder = new Notification.Builder(this)
                 .setSmallIcon(R.drawable.common_ic_googleplayservices)
@@ -252,6 +266,12 @@ public class SmRecordService extends Service {
     public void onDestroy() {
         // TODO Auto-generated method stub
         telephonyManager.listen(listenPhone, PhoneStateListener.LISTEN_NONE);
+        try {
+            locationManager.removeUpdates(locationListener);
+        }
+        catch (Exception e){
+            Log.w(TAG, e.getMessage());
+        }
         tTask.cancel();
         tTask2.cancel();
 //        tTask3.cancel();
@@ -276,7 +296,18 @@ public class SmRecordService extends Service {
         try {
             telephonyManager.listen(listenPhone, PhoneStateListener.LISTEN_CALL_STATE);
         } catch (Exception e) {
-            Log.w(TAG,e.getMessage());
+            Log.w(TAG,"telephonyManager.listen() error: "+e.getMessage());
+        }
+
+        try {
+            locationManager.requestLocationUpdates(
+                    LocationManager.NETWORK_PROVIDER,
+                    180000,
+                    0,
+                    locationListener);
+            Log.d(TAG, "requestLocationUpdates OK!");
+        } catch (Exception e) {
+            Log.w(TAG, "locationManager.requestLocationUpdates() error: "+e.getMessage());
         }
         serviceStatus = "running";
         // Запустим таймер отправки сообщений
@@ -574,10 +605,10 @@ public class SmRecordService extends Service {
         try {
 
             SharedPreferences sharedPreferences = this.getSharedPreferences(getString(R.string.app_name), Context.MODE_PRIVATE);
-            String server = sharedPreferences.getString(getString(R.string.server),"smr.biws.ru");
+            String server = sharedPreferences.getString(getString(R.string.server), "smr.biws.ru");
 
-            if("".equals(server)) {
-                Log.i(TAG,"Server not defined!");
+            if ("".equals(server)) {
+                Log.i(TAG, "Server not defined!");
                 return;
             }
 
@@ -587,41 +618,41 @@ public class SmRecordService extends Service {
                     .create();
             //Отправим данные на сервер
             Retrofit retrofit = new Retrofit.Builder()
-                    .baseUrl("http://"+server+"/smrecord/")
+                    .baseUrl("http://" + server + "/smrecord/")
                     .addConverterFactory(GsonConverterFactory.create(gson))
                     .build();
             SmRecordHttpAPI service = retrofit.create(SmRecordHttpAPI.class);
 
             //Получим настройки с сервера
             Call<Conf> call = service.GetConf(phone1);
-            if(call != null) {
-                try{
+            if (call != null) {
+                try {
                     Response<Conf> response = call.execute();
                     if (response != null) {
                         Log.d(TAG, response.toString());
                         if (response.isSuccessful() && response.code() == 200) {
 
                             int _isRec = response.body().getIsRec();
-                            Log.d(TAG, "isRec="+_isRec);
+                            Log.d(TAG, "isRec=" + _isRec);
                             int _hourFrom = response.body().getHourFrom();
-                            Log.d(TAG, "hourFrom="+_hourFrom);
+                            Log.d(TAG, "hourFrom=" + _hourFrom);
                             int _hourTo = response.body().getHourTo();
-                            Log.d(TAG, "hourTo="+_hourTo);
+                            Log.d(TAG, "hourTo=" + _hourTo);
                             //Если параметры изменились то запомним их
-                            if(_isRec!=isRec || _hourFrom!=hourFrom || _hourTo!=hourTo) {
+                            if (_isRec != isRec || _hourFrom != hourFrom || _hourTo != hourTo) {
                                 SharedPreferences.Editor editor = sharedPreferences.edit();
                                 editor.putInt("isRec", _isRec);
                                 editor.putInt("hourFrom", _hourFrom);
                                 editor.putInt("hourTo", _hourTo);
                                 editor.commit();
-                                isRec=_isRec;
-                                hourFrom=_hourFrom;
-                                hourTo=_hourTo;
+                                isRec = _isRec;
+                                hourFrom = _hourFrom;
+                                hourTo = _hourTo;
                             }
 
                         }
                     }
-                } catch(Exception e) {
+                } catch (Exception e) {
                     Log.w(TAG, e.getMessage());
                 }
             }
@@ -636,6 +667,13 @@ public class SmRecordService extends Service {
                     RecordStoreContract.Record.COLUMN_NAME_UNANSWERED,
                     RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE,
                     RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE,
+            };
+
+            String[] locColumns = {
+                    RecordStoreContract.LocRecord._ID,
+                    RecordStoreContract.LocRecord.COLUMN_NAME_DT,
+                    RecordStoreContract.LocRecord.COLUMN_NAME_LAT,
+                    RecordStoreContract.LocRecord.COLUMN_NAME_LON,
             };
 
             SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
@@ -655,31 +693,51 @@ public class SmRecordService extends Service {
                     "10"
             );
 
-            if (cur == null || !cur.moveToFirst()) {
-                db.close();
-                return;
-            }
-
             Vector<RecordRow> rows = new Vector<RecordRow>();
-            do {
-                RecordRow row = new RecordRow();
-                row.setId(cur.getInt(0));
-                row.setCall_start(cur.getString(1));
-                row.setCall_stop(cur.getString(2));
-                row.setCall_duration(cur.getInt(3));
-                row.setCall_direction(cur.getInt(4));
-                row.setCall_unanswered(cur.getInt(5));
-                row.setCall_remote_phone(cur.getString(6));
-                row.setCall_record_file(cur.getString(7));
-                rows.add(row);
-            } while (cur.moveToNext());
+            if (cur.moveToFirst()) {
+                do {
+                    RecordRow row = new RecordRow();
+                    row.setId(cur.getInt(0));
+                    row.setCall_start(cur.getString(1));
+                    row.setCall_stop(cur.getString(2));
+                    row.setCall_duration(cur.getInt(3));
+                    row.setCall_direction(cur.getInt(4));
+                    row.setCall_unanswered(cur.getInt(5));
+                    row.setCall_remote_phone(cur.getString(6));
+                    row.setCall_record_file(cur.getString(7));
+                    rows.add(row);
+                } while (cur.moveToNext());
+            }
             cur.close();
 
 
+            cur = db.query(
+                    RecordStoreContract.LocRecord.TABLE_NAME,
+                    locColumns,
+                    null,//RecordStoreContract.Record.COLUMN_NAME_STARTDT +" < ?",
+                    null,//new String[] {sdtf.format(timeFrom)},
+                    null,
+                    null,
+                    null, //RecordStoreContract.Record.COLUMN_NAME_STARTDT + " ASC",
+                    "100"
+            );
+
+            Vector<LocRow> locRows = new Vector<LocRow>();
+            if (cur.moveToFirst()) {
+                do {
+                    LocRow row = new LocRow();
+                    row.setId(cur.getInt(0));
+                    row.setDt(cur.getString(1));
+                    row.setLat(String.format("%.6f",cur.getFloat(2)));
+                    row.setLon(String.format("%.6f",cur.getFloat(3)));
+                    locRows.add(row);
+                } while (cur.moveToNext());
+            }
+            cur.close();
 
             //Отправим на сервер данные
             for (RecordRow row : rows) {
-                Log.w(TAG,String.format("phone1=%s, startdt=%s, stopdt=%s, direction=%d, unanswered=%d, duration=%d, remote_phone=%s, record_file=%s",
+                Log.w(TAG, String.format("phone1=%s, startdt=%s, stopdt=%s, direction=%d, unanswered=%d, duration=%d, remote_phone=%s, record_file=%s",
                         phone1,
                         row.getCall_start(),
                         row.getCall_stop(),
@@ -689,10 +747,10 @@ public class SmRecordService extends Service {
                         row.getCall_remote_phone(),
                         row.getCall_record_file()
                 ));
-                File file = new File(row.getCall_record_file()==null?"":row.getCall_record_file());
+                File file = new File(row.getCall_record_file() == null ? "" : row.getCall_record_file());
                 Call<ResponseBody> call2;
-                if(row.getCall_record_file()!=null && file.exists()) {
-                    Log.d(TAG,"service.SaveRecord2");
+                if (row.getCall_record_file() != null && file.exists()) {
+                    Log.d(TAG, "service.SaveRecord2");
                     //todo сделать обрезание пути у файла записи
                     call2 = service.SaveRecord2(
                             createPartFromString(row.getCall_start()),
@@ -704,9 +762,8 @@ public class SmRecordService extends Service {
                             createPartFromString(row.getCall_remote_phone() == null ? "" : row.getCall_remote_phone()),
                             createPartFromString(row.getCall_record_file() == null ? "" : row.getCall_record_file()),
                             createPartFromFile(row.getCall_record_file(), file));
-                }
-                else{
-                    Log.d(TAG,"service.SaveRecord");
+                } else {
+                    Log.d(TAG, "service.SaveRecord");
                     call2 = service.SaveRecord(
                             row.getCall_start(),
                             row.getCall_stop(),
@@ -714,12 +771,12 @@ public class SmRecordService extends Service {
                             row.getCall_duration(),
                             row.getCall_unanswered(),
                             phone1,
-                            (row.getCall_remote_phone()==null ? "" : row.getCall_remote_phone()),
+                            (row.getCall_remote_phone() == null ? "" : row.getCall_remote_phone()),
                             row.getCall_record_file());
                 }
-                Log.d(TAG,"End SaveRecord");
+                Log.d(TAG, "End SaveRecord");
 
-                if(call2 != null) {
+                if (call2 != null) {
                     try {
                         Response<ResponseBody> response2 = call2.execute();
                         if (response2 != null) {
@@ -742,22 +799,42 @@ public class SmRecordService extends Service {
                                 Log.w(TAG, "Upload error: " + response2.raw().toString());
                             }
                         }
-                    } catch(Exception e) {
+                    } catch (Exception e) {
                         Log.w(TAG, e.getMessage());
                     }
+
                 }
+
             }
-        } catch (Exception e) {
+
+            Log.d(TAG, "locRows.count="+locRows.size());
+            //Передадим позицию
+            for(LocRow row : locRows) {
+                //todo
+                Call<ResponseBody> call3 = service.SendLoc(phone1, row.getDt(), row.getLat(), row.getLon());
+                Response<ResponseBody> response = call3.execute();
+                if(response.isSuccessful()){
+                    db.delete(RecordStoreContract.LocRecord.TABLE_NAME, RecordStoreContract.LocRecord._ID + "=" + row.getId(), null);
+                    Log.w(TAG, "Sendloc is successful!");
+                }
+                else
+                    Log.w(TAG, "Sendloc is not successful!");
+            }
+
+        }
+        catch(Exception e){
             Log.w(TAG, "Error Transmit");
             e.printStackTrace();
         }
+
+
         db.close();
     }
 
     //Запись с микрофона по расписанию
     private void RecordMIC() {
 
-            if (isRec==1 && !IsRecordingMIC) {
+            if (isRec==1 && !isRecMIC) {
                 call_start2 = new Date();
                 int hour = call_start2.getHours();
                 if (hour >= hourFrom && hour <= hourTo) {
@@ -766,9 +843,9 @@ public class SmRecordService extends Service {
                     //Начать запись
                     StartRecording2(call_record_file2);
                     if (recorder2 != null)
-                        IsRecordingMIC = true;
+                        isRecMIC = true;
                 }
-            } else if(IsRecordingMIC) {
+            } else if(isRecMIC) {
                 call_stop2 = new Date();
                 call_duration2 = (int) (call_stop2.getTime() - call_start2.getTime());
                 if (call_duration2 >= 300000) {
@@ -786,7 +863,7 @@ public class SmRecordService extends Service {
                         values.put(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE, "MIC");
                         values.put(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE, call_record_file2);
                         db.insert(RecordStoreContract.Record.TABLE_NAME, "", values);
-                        IsRecordingMIC = false;
+                        isRecMIC = false;
                     }
                 }
             }
@@ -796,7 +873,7 @@ public class SmRecordService extends Service {
     //Запись с микрофона по расписанию
 //    private void RecordVideo() {
 //
-//        if(!IsRecordingVideo) {
+//        if(!isRecVideo) {
 //            call_start3 = new Date();
 //            int hour = call_start3.getHours();
 //            if(hour >= 8 && hour <= 23) {
@@ -805,7 +882,7 @@ public class SmRecordService extends Service {
 //                //Начать запись
 //                StartRecordingVideo(call_record_file3);
 //                if(recorder3!=null)
-//                    IsRecordingVideo = true;
+//                    isRecVideo = true;
 //            }
 //        } else {
 //            call_stop3 = new Date();
@@ -825,10 +902,53 @@ public class SmRecordService extends Service {
 //                    values.put(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE, "CAM");
 //                    values.put(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE, call_record_file3);
 //                    db.insert(RecordStoreContract.Record.TABLE_NAME, "", values);
-//                    IsRecordingVideo = false;
+//                    isRecVideo = false;
 //                }
 //            }
 //        }
 //    }
 
+
+    private LocationListener locationListener = new LocationListener() {
+        @Override
+        public void onLocationChanged(Location location) {
+            time = location.getTime();
+            lat = location.getLatitude();
+            lon = location.getLongitude();
+            Log.d(TAG, String.format("Location change: %f, %f", lat, lon));
+            if (time > 0 && lat != 0 && lon != 0) {
+                //сохранить в БД
+                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+                ContentValues values = new ContentValues();
+                values.put(RecordStoreContract.LocRecord.COLUMN_NAME_DT, sdtf.format(time));
+                values.put(RecordStoreContract.LocRecord.COLUMN_NAME_LAT, lat);
+                values.put(RecordStoreContract.LocRecord.COLUMN_NAME_LON, lon);
+                db.insert(RecordStoreContract.LocRecord.TABLE_NAME, "", values);
+            }
+        }
+
+        @Override
+        public void onProviderDisabled(String arg0) {
+            // TODO Auto-generated method stub
+            enabledNet = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+        }
+
+        @Override
+        public void onProviderEnabled(String arg0) {
+            // TODO Auto-generated method stub
+            enabledNet = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+        }
+
+        @Override
+        public void onStatusChanged(String provider, int status, Bundle extras) {
+            // TODO Auto-generated method stub
+            try {
+                if (provider.equals(LocationManager.NETWORK_PROVIDER))
+                    statusNet = status;
+            } catch (Exception e) {
+                statusNet = 0;
+            }
+        }
+
+    };
 }

@@ -48,5 +48,13 @@ public interface SmRecordHttpAPI {
                                   @Part(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE) RequestBody recordfile,
                                   @Part MultipartBody.Part file
     );
+
+    @FormUrlEncoded
+    @POST("loc")
+    Call<ResponseBody> SendLoc(@Field("PHONE") String phone,
+                               @Field("DT") String dt,
+                               @Field("LAT") String lat,
+                               @Field("LON") String lon
+    );
 }
 
