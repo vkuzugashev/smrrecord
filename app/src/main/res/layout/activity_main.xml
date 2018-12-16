@@ -126,8 +126,15 @@
             android:id="@+id/tvErrorMessage"
             android:text="ErrorMessage" />
 
-
+        <SurfaceView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/surfaceView"
+            android:layout_below="@+id/tvErrorMessage"
+            />
 
     </RelativeLayout>
+
+
 </LinearLayout>
 

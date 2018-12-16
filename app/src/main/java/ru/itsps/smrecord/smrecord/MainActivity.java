@@ -12,9 +12,9 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
-import android.view.View;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -25,6 +25,8 @@ public class MainActivity extends AppCompatActivity {
     TextView tvLineStatus;
     TextView tvErrorMessage;
     Toolbar  mTopToolbar;
+    SurfaceView surfaceView;
+    SurfaceHolder surfaceHolder;
     private Intent intent;
     boolean bound = false;
     private SmRecordService myService;
@@ -44,6 +46,11 @@ public class MainActivity extends AppCompatActivity {
         tvLineStatus = (TextView) findViewById(R.id.tvLineStatus);
         tvDescription = (TextView) findViewById(R.id.tvDescription);
         tvErrorMessage = (TextView) findViewById(R.id.tvErrorMessage);
+        surfaceView = (SurfaceView) findViewById(R.id.surfaceView);
+        surfaceHolder = surfaceView.getHolder();
+        //surfaceHolder.addCallback(this);
+        surfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+
 
         mTopToolbar = (Toolbar) findViewById(R.id.toolbar6);
         setSupportActionBar(mTopToolbar);
@@ -62,6 +69,8 @@ public class MainActivity extends AppCompatActivity {
                 tvLineStatus.setText(myService.getLineStatus());
                 tvDbStatus.setText(myService.getDbStatus());
                 tvErrorMessage.setText(myService.getErrorMessage());
+                myService.setmSurfaceView(surfaceView);
+
                 Log.d(TAG,"onServiceConnected");
             }
 
