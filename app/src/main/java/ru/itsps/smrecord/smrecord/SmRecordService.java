@@ -13,7 +13,9 @@ package ru.itsps.smrecord.smrecord;
     import java.util.TimerTask;
     import java.util.Vector;
 
+    import android.app.PendingIntent;
     import android.app.Service;
+    import android.app.AlarmManager;
     import android.content.ContentValues;
     import android.content.Context;
     import android.content.Intent;
@@ -30,6 +32,7 @@ package ru.itsps.smrecord.smrecord;
     import android.os.Binder;
     import android.os.Environment;
     import android.os.IBinder;
+    import android.os.Looper;
     import android.support.annotation.NonNull;
     import android.telephony.PhoneStateListener;
     import android.telephony.TelephonyManager;
@@ -56,6 +59,7 @@ public class SmRecordService extends Service {
     public static final String MULTIPART_FORM_DATA = "multipart/form-data";
 
     private TelephonyManager telephonyManager;
+    private AlarmManager alarmManager;
     private SmRecordPhoneStateListener listenPhone;
     private SmRecordBinder binder = new SmRecordBinder();
     private RecordStoreContract contract;
@@ -74,7 +78,8 @@ public class SmRecordService extends Service {
     private long intervalSendData = 60000;
     private long intervalRecMIC = 5000;
     //private long interval2 = 30000;
-    private long intervalRecCAM = 15000;
+    private long intervalRecCAM = 5000;
+    private static boolean isServiceStarted = false;
     private String serviceStatus;
     private String archiveStatus;
     private String dbStatus;
@@ -118,7 +123,14 @@ public class SmRecordService extends Service {
     private int statusNet;
     private boolean enabledNet;
     private static SurfaceView mSurfaceView;
+    Intent intent1;
+    PendingIntent pIntent1;
 
+
+
+    public synchronized static boolean isServiceStarted() {
+        return isServiceStarted;
+    }
 
     public synchronized static String getOutcoming_nr() {
         return outcoming_nr;
@@ -194,7 +206,8 @@ public class SmRecordService extends Service {
 
 
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
-
+        //получим alarmService
+        alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
 
         //Вытащим номер телефона из локального словаря
         SharedPreferences sharedPreferences = this.getSharedPreferences(getString(R.string.app_name), Context.MODE_PRIVATE);
@@ -216,10 +229,10 @@ public class SmRecordService extends Service {
         //таймер отправки записей
         timerSendData = new Timer(true);
         //таймер записи по расписанию
-//        if(isRecMIC == 1)
-            timerRecMIC = new Timer(true);
-//        if(isRecCAM == 1)
-            timerRecCAM = new Timer(true);
+        timerRecMIC = new Timer(true);
+        //таймер записи по расписанию
+        //timerRecCAM = new Timer(true);
+        timerRecCAM = new Timer();
 
         //Видео
         contract = new RecordStoreContract();
@@ -271,11 +284,20 @@ public class SmRecordService extends Service {
             tTaskRecCAM.cancel();
 
         tTaskRecCAM = new TimerTask() {
-                 public void run() {
-                    RecordShutCAM();
-                 }
+            public void run() {
+                //Looper.prepare();
+                //Looper.loop();
+                RecordShutCAM();
+            }
         };
         timerRecCAM.schedule(tTaskRecCAM, intervalRecCAM, intervalRecCAM);
+
+        //Настроим аларм для пробуждения сервиса
+        Intent intent = new Intent(this, AlarmReceiver.class);
+        intent.setAction("Wake UP");
+        intent.putExtra("extra", "extra 1");
+        pIntent1 = PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+        alarmManager.setRepeating(AlarmManager.RTC_WAKEUP, 5000, 5000, pIntent1);
     }
 
     @Override
@@ -303,6 +325,8 @@ public class SmRecordService extends Service {
         timerRecMIC.cancel();
         timerRecCAM.cancel();
 
+        //Служба выключена
+        isServiceStarted = false;
         super.onDestroy();
 
         //Removing any notifications
@@ -339,7 +363,8 @@ public class SmRecordService extends Service {
         Schedule();
         Log.d(TAG,"onStartCommand");
 
-        //return super.onStartCommand(intent, flags, startId);
+        //служба запущена
+        isServiceStarted = true;
         return START_STICKY;
     }
 
@@ -947,40 +972,45 @@ public class SmRecordService extends Service {
 
     //Запись с микрофона по расписанию
     private void RecordMIC() {
+        //Выполним остановку и запуск записи за один цикл
 
-            if (isRecMIC ==1 && !isRecordingMIC) {
-                call_start2 = new Date();
-                int hour = call_start2.getHours();
-                if (hour >= hourFrom && hour <= hourTo) {
-                    SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
-                    call_record_file2 = String.format("%s/%s-%s-%s-%d.3gp", getFullSdPath(), sdtf.format(call_start2), phone1, "MIC", 1);
-                    //Начать запись
-                    StartRecordingMIC(call_record_file2);
-                    if (recorder2 != null)
-                        isRecordingMIC = true;
-                }
-            } else if(isRecordingMIC) {
-                call_stop2 = new Date();
-                call_duration2 = (int) (call_stop2.getTime() - call_start2.getTime());
-                if (call_duration2 >= 300000) {
-                    SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
-                    //Остановить запись
-                    StopRecordingMIC();
-                    if (recorder2 == null) {
-                        //сохранить в БД
-                        ContentValues values = new ContentValues();
-                        values.put(RecordStoreContract.Record.COLUMN_NAME_STARTDT, sdtf.format(call_start2));
-                        values.put(RecordStoreContract.Record.COLUMN_NAME_STOPDT, sdtf.format(call_stop2));
-                        values.put(RecordStoreContract.Record.COLUMN_NAME_DURATION, call_duration2);
-                        values.put(RecordStoreContract.Record.COLUMN_NAME_DIRECTION, 1);
-                        values.put(RecordStoreContract.Record.COLUMN_NAME_UNANSWERED, 0);
-                        values.put(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE, "MIC");
-                        values.put(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE, call_record_file2);
-                        db.insert(RecordStoreContract.Record.TABLE_NAME, "", values);
-                        isRecordingMIC = false;
-                    }
+        //Если запись идёт проверим, проверим необходимость остановки
+        if(isRecordingMIC) {
+            call_stop2 = new Date();
+            call_duration2 = (int) (call_stop2.getTime() - call_start2.getTime());
+            if (call_duration2 >= 300000) {
+                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+                //Остановить запись
+                StopRecordingMIC();
+                if (recorder2 == null) {
+                    //сохранить в БД
+                    ContentValues values = new ContentValues();
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_STARTDT, sdtf.format(call_start2));
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_STOPDT, sdtf.format(call_stop2));
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_DURATION, call_duration2);
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_DIRECTION, 1);
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_UNANSWERED, 0);
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE, "MIC");
+                    values.put(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE, call_record_file2);
+                    db.insert(RecordStoreContract.Record.TABLE_NAME, "", values);
+                    isRecordingMIC = false;
                 }
             }
+        }
+
+        //Если разрешено и запись не начата, то начнём запись
+        if (isRecMIC ==1 && !isRecordingMIC) {
+            call_start2 = new Date();
+            int hour = call_start2.getHours();
+            if (hour >= hourFrom && hour <= hourTo) {
+                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+                call_record_file2 = String.format("%s/%s-%s-%s-%d.3gp", getFullSdPath(), sdtf.format(call_start2), phone1, "MIC", 1);
+                //Начать запись
+                StartRecordingMIC(call_record_file2);
+                if (recorder2 != null)
+                    isRecordingMIC = true;
+            }
+        }
 
     }
 
@@ -988,28 +1018,17 @@ public class SmRecordService extends Service {
     private void RecordShutCAM() {
         if(isRecCAM == 1){
             //Сделать снимок
-            ShutCAM();
+            //ShutCAM();
         }
     }
 
-    //Запись с микрофона по расписанию
+    //Запись с камеры по расписанию
     private void RecordCAM() {
 
-        if(isRecCAM ==1 && !isRecordingCAM){
-            call_start3 = new Date();
-            int hour = call_start3.getHours();
-            if(hour >= hourFrom && hour <= hourTo) {
-                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
-                call_record_file3 = String.format("%s/%s-%s-%s-%d.3gp", getFullSdPath(), sdtf.format(call_start3), phone1, "CAM", 1);
-                //Начать запись
-                StartRecordingCAM(call_record_file3);
-                if(recorder3!=null)
-                    isRecordingCAM= true;
-            }
-        } else if(isRecordingCAM) {
+        if(isRecordingCAM) {
             call_stop3 = new Date();
             call_duration3 = (int)(call_stop3.getTime() - call_start3.getTime());
-            if(call_duration3 >= 60000) {
+            if(call_duration3 >= 5000) {
                 SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
                 //Остановить запись
                 StopRecordingCAM();
@@ -1028,6 +1047,20 @@ public class SmRecordService extends Service {
                 }
             }
         }
+
+        if(isRecCAM ==1 && !isRecordingCAM){
+            call_start3 = new Date();
+            int hour = call_start3.getHours();
+            if(hour >= hourFrom && hour <= hourTo) {
+                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
+                call_record_file3 = String.format("%s/%s-%s-%s-%d.3gp", getFullSdPath(), sdtf.format(call_start3), phone1, "CAM", 1);
+                //Начать запись
+                StartRecordingCAM(call_record_file3);
+                if(recorder3!=null)
+                    isRecordingCAM= true;
+            }
+        }
+
     }
 
 
