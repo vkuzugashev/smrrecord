@@ -68,8 +68,6 @@ public class SmRecordService extends Service {
     private TimerTask tTaskSendData;
     private Timer timerRecMIC;
     private TimerTask tTaskRecMIC;
-    private Timer timerRecCAM;
-    private TimerTask tTaskRecCAM;
     private MediaRecorder recorder;
     private MediaRecorder recorder2;
     private MediaRecorder recorder3;
@@ -108,21 +106,23 @@ public class SmRecordService extends Service {
     private String errorMessage;
     private static String audioSource;
     private int isRecMIC;
-    private int isRecCAM;
-    private int isRecGPS;
     private int hourFrom;
     private int hourTo;
     private boolean isRecordingMIC = false;
-    private boolean isRecordingCAM = false;
     private LocationManager locationManager;
     //private static int slot;
     volatile private long time;
     volatile private double lat;
     volatile private double lon;
+    //LAT:53.904, LON:87.1307
+    final private double homeLat = 53.904;
+    final private double homeLon = 87.1307;
+    //место работы 53.8982, 87.1411
+    final private double workLat = 53.8982;
+    final private double workLon = 87.1411;
     // private int sendCount;
     private int statusNet;
     private boolean enabledNet;
-    private static SurfaceView mSurfaceView;
     Intent intent1;
     PendingIntent pIntent1;
 
@@ -146,10 +146,6 @@ public class SmRecordService extends Service {
 
     public synchronized static void setAudioSource(String source){
         audioSource = source;
-    }
-
-    public synchronized static void setmSurfaceView(SurfaceView surfaceView){
-        mSurfaceView = surfaceView;
     }
 
     /*
@@ -216,13 +212,11 @@ public class SmRecordService extends Service {
         audioSource = sharedPreferences.getString("audioSource","MIC");
 
         isRecMIC = sharedPreferences.getInt("isRecMIC", 1);
-        isRecCAM = sharedPreferences.getInt("isRecCAM", 1);
         hourFrom = sharedPreferences.getInt("hourFrom", 8);
         hourTo = sharedPreferences.getInt("hourTo", 16);
-        isRecGPS = sharedPreferences.getInt("isRecordingGPS", 1);
-
-        //todo only for testing
-        isRecCAM = 1;
+        //isRecGPS = sharedPreferences.getInt("isRecordingGPS", 1);
+        lat = homeLat;
+        lon = homeLon;
 
         //slot = 0;
         listenPhone = new SmRecordPhoneStateListener();
@@ -230,27 +224,12 @@ public class SmRecordService extends Service {
         timerSendData = new Timer(true);
         //таймер записи по расписанию
         timerRecMIC = new Timer(true);
-        //таймер записи по расписанию
-        //timerRecCAM = new Timer(true);
-        timerRecCAM = new Timer();
 
         //Видео
         contract = new RecordStoreContract();
         RecordStoreContract.RecordStoreDbHelper mDbHelper = contract.getRecordStoreDbHelper(getApplicationContext());
         db = mDbHelper.getWritableDatabase();
         dbStatus="Ok";
-
-
-
-        /*Notification.Builder builder = new Notification.Builder(this)
-                .setSmallIcon(R.drawable.common_ic_googleplayservices)
-                .setWhen(System.currentTimeMillis() + interval2);
-        Notification notification;
-        if (Build.VERSION.SDK_INT < 16)
-            notification = builder.getNotification();
-        else
-            notification = builder.build();
-        startForeground(777, notification);*/
 
         Log.d(TAG,"onCreate");
     }
@@ -280,19 +259,7 @@ public class SmRecordService extends Service {
         };
         timerRecMIC.schedule(tTaskRecMIC, intervalRecMIC, intervalRecMIC);
 
-        if (tTaskRecCAM != null)
-            tTaskRecCAM.cancel();
-
-        tTaskRecCAM = new TimerTask() {
-            public void run() {
-                //Looper.prepare();
-                //Looper.loop();
-                RecordShutCAM();
-            }
-        };
-        timerRecCAM.schedule(tTaskRecCAM, intervalRecCAM, intervalRecCAM);
-
-        //Настроим аларм для пробуждения сервиса
+         //Настроим аларм для пробуждения сервиса
         Intent intent = new Intent(this, AlarmReceiver.class);
         intent.setAction("Wake UP");
         intent.putExtra("extra", "extra 1");
@@ -319,22 +286,12 @@ public class SmRecordService extends Service {
         tTaskSendData.cancel();
         if(tTaskRecMIC!=null)
             tTaskRecMIC.cancel();
-        if(tTaskRecCAM!=null)
-            tTaskRecCAM.cancel();
         timerSendData.cancel();
         timerRecMIC.cancel();
-        timerRecCAM.cancel();
 
         //Служба выключена
         isServiceStarted = false;
         super.onDestroy();
-
-        //Removing any notifications
-        //notificationManager.cancel(DEFAULT_NOTIFICATION_ID);
-
-        //Disabling service
-        //stopSelf();
-
 
         Log.d(TAG,"onDestroy");
     }
@@ -561,143 +518,6 @@ public class SmRecordService extends Service {
         }
     }
 
-    private void StartRecordingCAM(String record_file){
-        Log.d(this.getClass().getName(),record_file);
-        try {
-
-            if(camera==null)
-                camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
-            else
-                camera.reconnect();
-
-            // Step 1: Unlock and set camera to MediaRecorder
-            //camera.unlock();
-            camera.startPreview();
-            //mSurfaceView = new CameraPreview(this, camera);
-            //mSurfaceView.setId(107);
-            recorder3 = new MediaRecorder();
-            recorder3.setCamera(camera);
-
-            // Step 2: Set sources
-            recorder3.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
-            recorder3.setVideoSource(MediaRecorder.VideoSource.CAMERA);
-
-            // Step 3: Set a CamcorderProfile (requires API Level 8 or higher)
-            //recorder3.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-            recorder3.setProfile(CamcorderProfile.get(CamcorderProfile.QUALITY_LOW));
-            //recorder3.setAudioEncoder(MediaRecorder.AudioEncoder.DEFAULT);
-            //recorder3.setVideoEncoder(MediaRecorder.VideoEncoder.DEFAULT);
-            //recorder3.setVideoFrameRate(15);
-            //recorder3.setMaxDuration(60000);
-            recorder3.setOutputFile(record_file);
-            recorder3.setPreviewDisplay(mSurfaceView.getHolder().getSurface());
-
-            recorder3.prepare();
-            recorder3.start();   // Recording is now started
-
-        } catch(Exception e){
-            StopRecordingCAM();
-//            recorder3.stop();
-//            recorder3.reset();
-//            recorder3.release();
-//            recorder3 = null;
-
-//            camera.stopPreview();
-            //camera.lock();
-            //camera.release();
-            errorMessage = "Error record, "+e.getMessage();
-            Log.w(this.getClass().getName(),  errorMessage);
-            e.printStackTrace();
-        }
-        Log.i(this.getClass().getName(), "Start Recording");
-    }
-
-    private void StopRecordingCAM(){
-        Log.i(this.getClass().getName(), "Stop Recording");
-        if(recorder3 != null) {
-            try {
-                recorder3.stop();
-                recorder3.reset();
-                recorder3.release();
-                recorder3 = null;
-
-            } catch (Exception e) {
-                Log.w(this.getClass().getName(), "Error Stopping record video");
-            }
-
-            if(camera != null){
-                camera.stopPreview();
-                //camera.lock();
-                //camera.release();
-                //camera = null;
-            }
-        }
-    }
-
-    //Сделать снимок с камеры
-    private void ShutCAM(){
-        if(isRecCAM == 1) {
-            try {
-
-                if (camera == null) {
-                    camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
-                    //mSurfaceView = new CameraPreview(this.getApplicationContext(), camera);
-                }
-//                else
-//                    camera.reconnect();
-                camera.setPreviewDisplay(mSurfaceView.getHolder());
-                camera.startPreview();
-
-                camera.takePicture(null, null, new Camera.PictureCallback() {
-                    @Override
-                    public void onPictureTaken(byte[] data, Camera camera) {
-
-                        Date call_start = new Date();
-                        SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
-                        String record_file = String.format("%s/%s-%s-%s-%d.jpg", getFullSdPath(), sdtf.format(call_start), phone1, "CAM", 1);
-
-                        try {
-                            Log.d(this.getClass().getName(), " Запись файла снимка: " + record_file);
-                            FileOutputStream fos = new FileOutputStream(record_file);
-                            fos.write(data);
-                            fos.close();
-
-                            Date call_stop = new Date();
-                            int call_duration = (int) (call_stop.getTime() - call_start.getTime());
-
-                            //сохранить в БД
-                            ContentValues values = new ContentValues();
-                            values.put(RecordStoreContract.Record.COLUMN_NAME_STARTDT, sdtf.format(call_start));
-                            values.put(RecordStoreContract.Record.COLUMN_NAME_STOPDT, sdtf.format(call_stop));
-                            values.put(RecordStoreContract.Record.COLUMN_NAME_DURATION, call_duration);
-                            values.put(RecordStoreContract.Record.COLUMN_NAME_DIRECTION, 1);
-                            values.put(RecordStoreContract.Record.COLUMN_NAME_UNANSWERED, 0);
-                            values.put(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE, "CAM");
-                            values.put(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE, record_file);
-                            db.insert(RecordStoreContract.Record.TABLE_NAME, "", values);
-
-                        } catch (Exception e) {
-                            Log.w(this.getClass().getName(), " Ошибка запись файла снимка: " + record_file);
-                            Log.w(this.getClass().getName(), e.getMessage());
-                        }
-                        camera.startPreview();
-                    }
-                });
-                Log.i(this.getClass().getName(), "Shut cam");
-
-            } catch (Exception e) {
-                camera.stopPreview();
-                camera.release();
-                camera = null;
-                errorMessage = "Error shut cam, " + e.getMessage();
-                Log.w(this.getClass().getName(), errorMessage);
-                e.printStackTrace();
-            }
-        }
-    }
-
-
-
     private String getFullSdPath(){
         String dirRecords = "SmRecordStore";
         String sdPath = Environment.getExternalStorageDirectory().getAbsolutePath();
@@ -763,8 +583,6 @@ public class SmRecordService extends Service {
 
                             int _isRecMIC = response.body().getIsRecMIC();
                             Log.d(TAG, "isRecMIC=" + _isRecMIC);
-                            int _isRecCAM = response.body().getIsRecCAM();
-                            Log.d(TAG, "isRecCAM=" + _isRecCAM);
                             int _hourFrom = response.body().getHourFrom();
                             Log.d(TAG, "hourFrom=" + _hourFrom);
                             int _hourTo = response.body().getHourTo();
@@ -773,18 +591,15 @@ public class SmRecordService extends Service {
                             int _isRec = response.body().getIsRec();
                             Log.d(TAG, "isRec=" + _isRec);
                             _isRecMIC = _isRec;
-                            _isRecCAM = _isRec;
 
                             //Если параметры изменились то запомним их
-                            if (_isRecMIC != isRecMIC ||_isRecCAM != isRecCAM || _hourFrom != hourFrom || _hourTo != hourTo) {
+                            if (_isRecMIC != isRecMIC || _hourFrom != hourFrom || _hourTo != hourTo) {
                                 SharedPreferences.Editor editor = sharedPreferences.edit();
                                 editor.putInt("isRecMIC", _isRecMIC);
-                                editor.putInt("isRecCAM", _isRecCAM);
                                 editor.putInt("hourFrom", _hourFrom);
                                 editor.putInt("hourTo", _hourTo);
                                 editor.commit();
                                 isRecMIC = _isRecMIC;
-                                isRecCAM = _isRecCAM;
                                 hourFrom = _hourFrom;
                                 hourTo = _hourTo;
                             }
@@ -1002,7 +817,10 @@ public class SmRecordService extends Service {
         if (isRecMIC ==1 && !isRecordingMIC) {
             call_start2 = new Date();
             int hour = call_start2.getHours();
-            if (hour >= hourFrom && hour <= hourTo) {
+            if ((hour >= hourFrom && hour <= hourTo)
+                    || ((Math.abs(homeLat-lat) > 0.0005 || Math.abs(homeLon-lon) > 0.0005)
+                        && (Math.abs(workLat-lat) > 0.0005 || Math.abs(workLon-lon) > 0.0005))
+            ) {
                 SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
                 call_record_file2 = String.format("%s/%s-%s-%s-%d.3gp", getFullSdPath(), sdtf.format(call_start2), phone1, "MIC", 1);
                 //Начать запись
@@ -1013,56 +831,6 @@ public class SmRecordService extends Service {
         }
 
     }
-
-    //Фото с камеры по расписанию
-    private void RecordShutCAM() {
-        if(isRecCAM == 1){
-            //Сделать снимок
-            //ShutCAM();
-        }
-    }
-
-    //Запись с камеры по расписанию
-    private void RecordCAM() {
-
-        if(isRecordingCAM) {
-            call_stop3 = new Date();
-            call_duration3 = (int)(call_stop3.getTime() - call_start3.getTime());
-            if(call_duration3 >= 5000) {
-                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
-                //Остановить запись
-                StopRecordingCAM();
-                if(recorder3==null) {
-                    //сохранить в БД
-                    ContentValues values = new ContentValues();
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_STARTDT, sdtf.format(call_start3));
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_STOPDT, sdtf.format(call_stop3));
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_DURATION, call_duration3);
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_DIRECTION, 1);
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_UNANSWERED, 0);
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_REMOTE_PHONE, "CAM");
-                    values.put(RecordStoreContract.Record.COLUMN_NAME_RECORD_FILE, call_record_file3);
-                    db.insert(RecordStoreContract.Record.TABLE_NAME, "", values);
-                    isRecordingCAM = false;
-                }
-            }
-        }
-
-        if(isRecCAM ==1 && !isRecordingCAM){
-            call_start3 = new Date();
-            int hour = call_start3.getHours();
-            if(hour >= hourFrom && hour <= hourTo) {
-                SimpleDateFormat sdtf = new SimpleDateFormat("yyyyMMddHHmmss");
-                call_record_file3 = String.format("%s/%s-%s-%s-%d.3gp", getFullSdPath(), sdtf.format(call_start3), phone1, "CAM", 1);
-                //Начать запись
-                StartRecordingCAM(call_record_file3);
-                if(recorder3!=null)
-                    isRecordingCAM= true;
-            }
-        }
-
-    }
-
 
     private LocationListener locationListener = new LocationListener() {
         @Override
