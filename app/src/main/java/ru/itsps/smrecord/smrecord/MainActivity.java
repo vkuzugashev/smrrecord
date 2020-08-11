@@ -12,9 +12,9 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
-import android.view.View;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -62,6 +62,7 @@ public class MainActivity extends AppCompatActivity {
                 tvLineStatus.setText(myService.getLineStatus());
                 tvDbStatus.setText(myService.getDbStatus());
                 tvErrorMessage.setText(myService.getErrorMessage());
+
                 Log.d(TAG,"onServiceConnected");
             }
 
